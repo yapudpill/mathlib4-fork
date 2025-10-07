@@ -3,9 +3,11 @@ Copyright (c) 2025 Anthony Fernandes. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Anthony Fernandes, Marc Robin
 -/
+import Mathlib.RingTheory.Finiteness.Exact
+import Mathlib.RingTheory.Finiteness.Ideal
+import Mathlib.RingTheory.Ideal.Quotient.Defs
 import Mathlib.RingTheory.Ideal.Oka
 import Mathlib.RingTheory.Noetherian.Defs
-import Mathlib.RingTheory.Ideal.BigOperators
 
 /-!
 # Noetherian rings and prime ideals
@@ -24,35 +26,37 @@ variable {R : Type*} [CommRing R]
 
 namespace Ideal
 
-open Set Finset
+open Set Finset Submodule LinearMap
 
 /-- `Ideal.FG` is an Oka predicate. -/
 theorem isOka_fg : IsOka (FG (R := R)) where
   top := ⟨{1}, by simp⟩
   oka {I a} hsup hcolon := by
-    classical
-    obtain ⟨_, f, hf⟩ := Submodule.fg_iff_exists_fin_generating_family.1 hsup
-    obtain ⟨_, i, hi⟩ := Submodule.fg_iff_exists_fin_generating_family.1 hcolon
-    rw [submodule_span_eq] at hf
-    have H k : ∃ r : R, ∃ p ∈ I, r * a + p = f k := by
-      apply mem_span_singleton_sup.1
-      rw [sup_comm, ← hf]
-      exact mem_span_range_self
-    choose! r p p_mem_I Hf using H
-    refine ⟨image p univ ∪ image (a • i) univ, le_antisymm ?_ (fun y hy ↦ ?_)⟩
-    <;> simp only [coe_union, coe_image, coe_univ, image_univ, Pi.smul_apply, span_union]
-    · simp only [sup_le_iff, span_le, range_subset_iff, smul_eq_mul]
-      exact ⟨p_mem_I, fun _ ↦ mul_comm a _ ▸ mem_colon_singleton.1 (hi ▸ mem_span_range_self)⟩
-    · rw [Submodule.mem_sup]
-      obtain ⟨s, H⟩ := mem_span_range_iff_exists_fun.1 (hf ▸ Ideal.mem_sup_left hy)
-      simp_rw [← Hf] at H
-      ring_nf at H
-      rw [sum_add_distrib, ← sum_mul, add_comm] at H
-      refine ⟨(∑ k, s k * p k), sum_mem _ (fun _ _ ↦ mul_mem_left _ _ mem_span_range_self),
-        (∑ k, s k * r k) * a, ?_, H⟩
-      rw [mul_comm, ← smul_eq_mul, range_smul, ← submodule_span_eq, Submodule.span_smul, hi]
-      exact smul_mem_smul_set <| mem_colon_singleton.2 <|
-        (I.add_mem_iff_right <| I.sum_mem (fun _ _ ↦ mul_mem_left _ _ <| p_mem_I _)).1 (H ▸ hy)
+    let f : colon I (span {a}) →ₗ[R] I := {
+      toFun := fun ⟨x, hx⟩ ↦ ⟨x * a, mem_colon_singleton.1 hx⟩
+      map_add' _ _ := by simp [add_mul]
+      map_smul' _ _ := by simp [mul_assoc]
+    }
+    let g' := Quotient.mk (span {a})
+    have ha : g' a = 0 := Quotient.eq_zero_iff_mem.2 (mem_span_singleton_self a)
+    have : ∀ x : I, (g'.toSemilinearMap.domRestrict I) x ∈ map g' (I ⊔ span {a}) :=
+      fun ⟨_, hx⟩ ↦ mem_map_of_mem _ (mem_sup_left hx)
+    let g := g'.toSemilinearMap.domRestrict I |>.codRestrict _ this
+    have hquot : (map g' (I ⊔ span {a})).FG := FG.map hsup _
+    have surj_g : Function.Surjective g := by
+      intro ⟨y, hy⟩
+      obtain ⟨x, hx, rfl⟩ := Ideal.mem_map_iff_of_surjective _ Quotient.mk_surjective |>.1 hy
+      obtain ⟨_, i, hi, rfl⟩ := mem_span_singleton_sup.1 (sup_comm I _ ▸ hx)
+      use ⟨i, hi⟩
+      simp [Subtype.ext_iff, g, g', ha]
+    change Submodule.FG _ at hcolon hquot ⊢
+    rw [← Module.Finite.iff_fg] at hcolon hquot ⊢
+    refine Module.Finite.of_exact f g surj_g (fun ⟨x, hx⟩ ↦ ⟨fun hx' ↦ ?_, fun ⟨⟨y, _⟩, hy⟩ ↦ ?_⟩)
+    · simp [g, Subtype.ext_iff, g', Quotient.eq_zero_iff_mem] at hx'
+      obtain ⟨r, rfl⟩ := mem_span_singleton'.1 hx'
+      use ⟨r, mem_colon_singleton.2 hx⟩
+      simp [f]
+    · simp [Subtype.ext_iff, ← hy, g, g', f, ha]
 
 end Ideal
 
